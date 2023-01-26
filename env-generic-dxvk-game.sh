@@ -1,0 +1,3 @@
+#!/bin/sh
+
+echo "env OBS_VKCAPTURE=1 MANGOHUD=1 DXVK_ASYNC=1"
