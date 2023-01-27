@@ -5,7 +5,7 @@ echoerr() {
 }
 
 print_usage() {
-    echoerr "Usage: $0 <name> [port=5900]"
+    echoerr "Usage: $0 <name>"
 }
 
 get_audio_backend() {
@@ -14,14 +14,27 @@ get_audio_backend() {
     return $?
 }
 
-if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+get_spice_port() {
+    local xpath_string='string(/domain/devices/graphics[@type="spice"]/@port)'
+    local port exit_code
+    port="$(virsh --connect "$1" dumpxml "$2" | xmllint --xpath "$xpath_string" -)"
+    if $? -ne 0; then
+        return $?
+    fi
+    if [ "$port" -eq -1 ]; then
+        port=5900
+    fi
+    echo "$port"
+    return 0
+}
+
+if [ $# -ne 1 ]; then
     print_usage
     exit 1
 fi
 
-name="$1"
-port="${2:-5900}"
-session_uri="qemu:///system"
+readonly name="$1"
+readonly session_uri="qemu:///system"
 
 if virsh --connect "$session_uri" list --name --state-running | grep "^$name$" >/dev/null; then
     echoerr "Found running VM with name '$name'"
@@ -34,7 +47,7 @@ if virsh --connect "$session_uri" list --name --state-running | grep "^$name$" >
             echoerr "Error connecting VM jack ports"
         fi
     fi
-    if ! looking-glass-client -p "$port"; then
+    if ! looking-glass-client -p "$(get_spice_port "$session_uri" "$name")"; then
         echoerr "Error running looking-glass-client"
         exit_code=$?
     fi

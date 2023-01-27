@@ -12,20 +12,7 @@ write_message() {
     echo -n "$text"
 }
 
-get_spice_port() {
-    local xpath_string='string(/domain/devices/graphics[@type="spice"]/@port)'
-    local port
-    port="$(virsh --connect "$1" dumpxml "$2" | xmllint --xpath "$xpath_string" -)"
-    if [ "$port" -ne -1 ]; then
-        echo "$port"
-    fi
-    return $?
-}
-
-launch_vm() {
-    local file="/tmp/$USER-passthrough-vm-env-$1.conf"
-    echo "PASSTHROUGH_VM_DOMAIN=$1" >"$file"
-    echo "PASSTHROUGH_VM_PORT=$2" >>"$file"
+launch_looking_glass() {
     systemctl --user start "launch-vm-looking-glass@$1.service"
     return $?
 }
@@ -155,7 +142,7 @@ next_menus() {
                 echo "$action"
                 ;;
             "looking_glass")
-                launch_vm "$name" "$(get_spice_port "$SESSION_URI" "$name")" |
+                launch_looking_glass "$name" |
                     tee >&2 >(xargs -r -I{} notify-send "Virtual Machine: $name" {})
                 echo "$action"
                 ;;
