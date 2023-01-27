@@ -12,6 +12,10 @@ write_message() {
     echo -n "$text"
 }
 
+notify() {
+    tee >&2 >(xargs -r -I{} notify-send "$1" {})
+}
+
 launch_looking_glass() {
     local unit_name="launch-vm-looking-glass@$1.service"
     if ! systemctl --user is-active --quiet "$unit_name"; then
@@ -142,13 +146,11 @@ next_menus() {
         if [ "$selection" = "$(write_message "${ACTIONS[$action]}")" ]; then
             case "$action" in
             "start" | "suspend" | "shutdown" | "resume")
-                virsh --connect "$SESSION_URI" "$action" "$name" |
-                    tee >&2 >(xargs -r -I{} notify-send "Virtual Machine: $name" {})
+                virsh --connect "$SESSION_URI" "$action" "$name" | notify "Virtual Machine: $name"
                 echo "$action"
                 ;;
             "looking_glass")
-                launch_looking_glass "$name" |
-                    tee >&2 >(xargs -r -I{} notify-send "Virtual Machine: $name" {})
+                launch_looking_glass "$name" | notify "Virtual Machine: $name"
                 echo "$action"
                 ;;
             *)
