@@ -13,8 +13,13 @@ write_message() {
 }
 
 launch_looking_glass() {
-    systemctl --user start "launch-vm-looking-glass@$1.service"
-    return $?
+    local unit_name="launch-vm-looking-glass@$1.service"
+    if ! systemctl --user is-active --quiet "$unit_name"; then
+        echo "Starting unit $unit_name"
+        systemctl --user start "$unit_name"
+    else
+        echo "Unit $unit_name is already active"
+    fi
 }
 
 format_entry() {
