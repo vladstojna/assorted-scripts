@@ -2,4 +2,5 @@
 
 journalctl --boot --user --user-unit nsmd.service --identifier=nsmd |
     grep -o 'Process Ardour.* has pid' |
-    awk '{ print  $2 }'
+    awk '{ print  $2 }' |
+    head -n 1
