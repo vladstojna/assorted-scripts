@@ -8,7 +8,11 @@ print_usage() {
   echoerr "Usage: $0 <connect|disconnect>"
 }
 
-ardour_session="${ardour_session:-$(ardour-nsm-session-name)}"
+get_session_name() {
+  "$(dirname "$(readlink -e "$0")")/ardour-nsm-session-name.sh"
+}
+
+ardour_session="${ardour_session:-$(get_session_name)}"
 slave_client="${slave_client:-desktop2}"
 
 declare -A ardour_output_buses=(

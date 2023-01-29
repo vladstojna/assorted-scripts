@@ -8,6 +8,10 @@ print_usage() {
   echoerr "Usage: $0 <connect|disconnect>"
 }
 
+get_session_name() {
+  "$(dirname "$(readlink -e "$0")")/ardour-nsm-session-name.sh"
+}
+
 if [ $# -ne 1 ] && [ "$1" != 'connect' ] && [ "$1" != 'disconnect' ]; then
   print_usage
   exit 1
@@ -22,7 +26,7 @@ declare -rA obs_clients=(
   [mic]="mic;1;2"
 )
 
-readonly ardour_session="${ardour_session:-$(ardour-nsm-session-name)}"
+readonly ardour_session="${ardour_session:-$(get_session_name)}"
 readonly port_suffix="audio_out"
 readonly obs_port_prefix="obs-"
 readonly jack_cmd="jack_$1"
