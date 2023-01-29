@@ -23,20 +23,18 @@ previously_set_candidate=
 
 populate_candidates() {
     local path="$1"
-    local file current_file
+    local symlink="$path/$SYMLINK_NAME"
 
-    current_file=$(readlink "$path/$SYMLINK_NAME")
-    if [ -z "$current_file" ]; then
-        echoerr "populate_candidates(): symbolic link $path/$SYMLINK_NAME does not exist"
+    if [ ! -L "$symlink" ]; then
+        echoerr "populate_candidates(): symbolic link $symlink does not exist"
     fi
+    local file
     while read -r file; do
         echoerr "populate_candidates() $file"
-        if [ -n "$current_file" ] && [ "$current_file" = "$file" ]; then
-            candidate_files["$file"]="$(write_message "$file")"
+        if [ -L "$symlink" ] && [ "$(readlink "$symlink")" = "$file" ]; then
             previously_set_candidate="$file"
-        else
-            candidate_files["$file"]="$(write_message "$file")"
         fi
+        candidate_files["$file"]="$(write_message "$file")"
         candidate_files_ordered+=("$file")
     done < <(find "$path" -type f -name 'skyrimse-*' -printf '%f\n' | sort)
 
@@ -47,7 +45,9 @@ populate_candidates() {
             tmp+=("$x")
         fi
     done
-    candidate_files_ordered=("${tmp[@]}" "$previously_set_candidate")
+    if [ -n "$previously_set_candidate" ]; then
+        candidate_files_ordered=("${tmp[@]}" "$previously_set_candidate")
+    fi
 }
 
 menu() {
@@ -80,8 +80,12 @@ execute_selection() {
     return 1
 }
 
+default_prefix() {
+    echo "$(dirname "$(readlink -e "$0")")/steam-launch"
+}
+
 main() {
-    local launchers_prefix="${launchers_prefix:-"$HOME/scripts/steam-launch"}"
+    local launchers_prefix="${launchers_prefix:-$(default_prefix)}"
     echoerr "main(): launchers prefix is '$launchers_prefix'"
     if [ ! -d "$launchers_prefix" ]; then
         echo "main(): launchers prefix is not a directory" | notify "Error"
