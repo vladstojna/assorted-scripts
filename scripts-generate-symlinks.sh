@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
-set -u
+set -eu
 
 print_usage() {
     echo "Generates symlinks in <target-directory> to executables in this directory (except $0)"
@@ -14,28 +13,25 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-script_dir="$(realpath -e "$(dirname "$0")")"
-target_dir="$(realpath -e "$1")"
+script_dir="$(dirname "$0")"
+target_dir="$1"
 shift 1
-
-cd "$target_dir"
 
 declare -A existing_links
 while read -r link; do
     existing_links["$link"]=""
-done < <(find . -maxdepth 1 -type l -exec readlink {} \; | sort)
+done < <(find "$target_dir" -maxdepth 1 -type l -exec readlink {} \; | sort)
 
 if [ $# -gt 0 ]; then
     files2link=$(
-        prefix="$(realpath -e --relative-to="$target_dir" "$script_dir")"
         for file in "$@"; do
-            echo "$prefix/$(basename "$file")"
+            realpath -e --relative-to="$target_dir" "$file"
         done
     )
 else
     files2link=$(
-        find "$(realpath -e --relative-to="$target_dir" "$script_dir")" \
-            -maxdepth 1 -type f -executable |
+        find "$script_dir" -maxdepth 1 -type f -executable \
+            -exec realpath -e --relative-to="$target_dir" {} \; |
             grep -v "$(basename "$0")" |
             sort
     )
@@ -47,7 +43,6 @@ while read -r file; do
     else
         target="$file"
         file="$(basename "$file")"
-        link_name="${file%%.*}"
-        ln -sfnv "$target" "$link_name"
+        ln -sfnv "$target" "$target_dir/${file%%.*}"
     fi
-done < <(echo "$files2link")
+done <<<"$files2link"
