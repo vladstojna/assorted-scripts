@@ -13,6 +13,8 @@ print_usage() {
           Remove <window> from scratchpad
       --list
           List windows present in scratchpad
+      --help
+          Print this menu and exit
 EOF
 }
 
