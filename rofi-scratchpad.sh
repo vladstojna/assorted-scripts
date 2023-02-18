@@ -18,7 +18,7 @@ populate_candidates() {
   local window
   while read -r window; do
     hidden_windows+=("$window")
-  done < <(bspc query -N -n '.hidden')
+  done < <(bspwm-scratchpad --list)
 }
 
 get_padding() {
