@@ -13,6 +13,8 @@ print_usage() {
           Remove <window> from scratchpad
       --list
           List windows present in scratchpad
+      --name
+          Print scratchpad desktop name
       --help
           Print this menu and exit
 EOF
@@ -82,6 +84,9 @@ main() {
     ;;
   "--list")
     list_scratchpad_windows
+    ;;
+  "--name")
+    scratchpad_name
     ;;
   "--help")
     print_usage
