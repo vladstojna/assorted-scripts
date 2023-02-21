@@ -46,15 +46,18 @@ get_entry_text() {
 
 menu() {
   local valid_idx=0
-  local padding
+  local padding icon_path icon_meta text
   padding="$(get_padding)"
   for window in "${scratchpad_windows[@]}"; do
-    local text
     text="$(get_entry_text "$window" "$padding")"
     if [ -n "$text" ]; then
-      local icon_path="${tmp_file_prefix}${valid_idx}.png"
-      extract-window-icon "$window" >"$icon_path"
-      echo -en "$(write_message "$text")\0icon\x1f${icon_path}\x1finfo\x1f${window}\n"
+      icon_path="${tmp_file_prefix}-$(xdotool getwindowclassname "$window").png"
+      icon_meta="icon\x1f${icon_path}\x1f"
+      if [ ! -f "$icon_path" ] && ! extract-window-icon "$window" >"$icon_path"; then
+        rm "$icon_path"
+        icon_meta=""
+      fi
+      echo -en "$(write_message "$text")\0${icon_meta}info\x1f${window}\n"
       valid_idx=$((valid_idx + 1))
     fi
   done
