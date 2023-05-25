@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+readonly pause_notifications="${pause_notifications:-false}"
 readonly new_window_gap="${1:-2}"
 readonly orig_file="/tmp/bspwm-zen-mode.orig"
 readonly properties=(
@@ -45,7 +46,7 @@ zenmode_set_properties() {
 
 zenmode_enable() {
 	polybar-msg cmd hide
-	dunstctl set-paused true
+	dunstctl set-paused "$pause_notifications"
 	zenmode_save_original_values >"$orig_file"
 	zenmode_set_properties "$new_window_gap"
 }
@@ -62,7 +63,8 @@ zenmode_toggle() {
 		echo "debug: zen mode is enabled, disabling" >&2
 		zenmode_disable
 	else
-		echo "debug: zen mode is disabled, enabling" >&2
+		echo "debug: zen mode is disabled, enabling" \
+			"(pause notifications = $pause_notifications)" >&2
 		zenmode_enable
 	fi
 }
