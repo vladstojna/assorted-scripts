@@ -30,6 +30,11 @@ channels.
 - `qjackctl-shutdown.sh` - script to execute before QjackCtl shuts down the JACK
   server.
 
+The `qjackctl-*.sh` scripts require these [environment variables
+](https://github.com/vladstojna/.envvars/blob/main/environment.d/nsm.conf) and
+the `nsm-*` systemd units from my collection of [custom system units.
+](https://github.com/vladstojna/systemd-custom-units)
+
 ### [bspwm](https://github.com/baskerville/bspwm)
 
 - `bspwm-scratchpad.sh` - my attempt at implementing a scratchpad-like
@@ -58,7 +63,8 @@ channels.
   configurations and change to a different one. More on this inside
   `steam-launch/`.
 - `rofi-manage-vms.sh` - display libvirt VMs and launch, shut down, pause them
-  or launch [Looking Glass](https://looking-glass.io/).
+  or launch [Looking Glass.](https://looking-glass.io/) Requires my [Looking
+  Glass systemd unit.](https://github.com/vladstojna/systemd-custom-units)
 - `rofi-scratchpad.sh` - show a list of windows in the scratchpad and select one
   to bring it to the current desktop. Works in tandem with
   `bspwm-scratchpad.sh`.
