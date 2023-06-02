@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
-set -u
+set -eu
 
 echoerr() {
     printf "%s\n" "$*" >&2
@@ -29,10 +28,15 @@ launch_looking_glass() {
 format_entry() {
     local separator
     separator="$(head -c 8 </dev/zero | tr '\0' ' ')"
-    printf "%s$separator" "id: $1" "name: $2" "state: $3"
+    printf "%s$separator" "context: $1" "id: $2" "name: $3" "state: $4"
 }
 
-readonly SESSION_URI='qemu:///system'
+readonly ROFI_DATA_SEPARATOR="|"
+readonly KEY_SEPARATOR="|"
+readonly SESSION_URIS=(
+    'qemu:///system'
+    'qemu:///session'
+)
 declare -rA ACTIONS=(
     [start]="Start"
     [suspend]="Suspend"
@@ -40,25 +44,61 @@ declare -rA ACTIONS=(
     [resume]="Resume"
     [looking_glass]="Launch Looking Glass"
 )
-readonly ACTIONS_AFTER_START=(looking_glass suspend shutdown)
-readonly ACTIONS_FALLBACK=(start suspend shutdown resume looking_glass)
+readonly ACTIONS_AFTER_START=(suspend shutdown)
+readonly ACTIONS_FALLBACK=(start suspend shutdown resume)
 
 declare -A messages
 declare -A virtual_machines
 
 populate_entries() {
     local id name state
-    while read -r id name state; do
-        messages[$name]=$(write_message "$(format_entry "$id" "$name" "$state")")
-        virtual_machines+=(["$name"]="$state")
-    done < <(virsh --connect "$SESSION_URI" list --all | tail -n +3 | sed '/^[[:space:]]*$/d')
+    while read -r context id name state; do
+        local key="${context}${KEY_SEPARATOR}${name}"
+        messages[$key]=$(write_message "$(format_entry "$context" "$id" "$name" "$state")")
+        virtual_machines+=([$key]="$state")
+    done < <(
+        for uri in "${SESSION_URIS[@]}"; do
+            echo -n "${uri##*/}"
+            virsh --connect "$uri" list --all | tail -n +3 | sed '/^[[:space:]]*$/d'
+        done
+    )
 }
 
-actions_from_state() {
-    local state="$1"
+is_using_looking_glass() {
+    local context="$1"
+    local name="$2"
+    local looking_glass="looking-glass"
+    local shmem
+    shmem=$(virsh --connect "qemu:///$context" dumpxml "$name" |
+        xmllint --xpath \
+            "string(/domain/devices/shmem[starts-with(@name,\"$looking_glass\")]/@name)" -)
+    [ "$shmem" = "$looking_glass" ]
+}
+
+actions_after_start() {
+    local context="$1"
+    local name="$2"
+    if is_using_looking_glass "$context" "$name"; then
+        echo "looking_glass" "${ACTIONS_AFTER_START[@]}"
+    fi
+}
+
+actions_fallback() {
+    local context="$1"
+    local name="$2"
+    echo -n "${ACTIONS_FALLBACK[@]}"
+    if is_using_looking_glass "$context" "$name"; then
+        echo " looking_glass"
+    fi
+}
+
+contextual_actions() {
+    local context="$1"
+    local name="$2"
+    local state="$3"
     case "$state" in
     "running")
-        echo "${ACTIONS_AFTER_START[@]}"
+        actions_after_start "$context" "$name"
         ;;
     "paused")
         echo resume
@@ -67,19 +107,21 @@ actions_from_state() {
         echo start
         ;;
     *)
-        echo "${ACTIONS_FALLBACK[@]}"
+        actions_fallback "$context" "$name"
         ;;
     esac
 }
 
 actions_from_chosen_action() {
-    local action="$1"
+    local context="$1"
+    local name="$2"
+    local action="$3"
     case "$action" in
     "suspend" | "shutdown" | "looking_glass")
         echoerr "actions_from_chosen_action() no more future actions"
         ;;
     "resume" | "start")
-        echo "${ACTIONS_AFTER_START[@]}"
+        actions_after_start "$context" "$name"
         ;;
     *)
         echoerr "actions_from_chosen_action() error"
@@ -93,19 +135,21 @@ invalid_selection() {
 }
 
 first_menu() {
-    local name
+    local key
     echo -e "\0prompt\x1fChoose virtual machine"
-    for name in "${!virtual_machines[@]}"; do
-        echo "${messages[$name]}"
+    for key in "${!virtual_machines[@]}"; do
+        echo "${messages[$key]}"
     done
 }
 
 action_prompts() {
     local action
-    local name="$1"
-    shift 1
-    echo -e "\0prompt\x1fChoose action for $name"
+    local context="$1"
+    local name="$2"
+    shift 2
+    echo -e "\0prompt\x1fChoose action for $name from context $context"
     for action in "$@"; do
+        echoerr "$action"
         write_message "${ACTIONS[$action]}"
         # write trailing newline
         echo
@@ -113,22 +157,26 @@ action_prompts() {
 }
 
 rofi_data_create_header() {
-    local IFS='|'
+    local IFS="$ROFI_DATA_SEPARATOR"
     echo -e "\0data\x1f$*"
 }
 
 second_menu() {
-    local name
+    local key
     local selection="$1"
     echoerr "second_menu() Selection: $selection"
-    for name in "${!virtual_machines[@]}"; do
-        if [ "$selection" = "${messages[$name]}" ]; then
+    for key in "${!virtual_machines[@]}"; do
+        if [ "$selection" = "${messages[$key]}" ]; then
             local initial_actions
-            initial_actions="$(actions_from_state "${virtual_machines[$name]}")"
-            action_prompts "$name" $initial_actions
+            local context name
+            IFS="$KEY_SEPARATOR" read -r context name <<<"$key"
+            read -ra initial_actions < <(
+                contextual_actions "$context" "$name" "${virtual_machines[$key]}"
+            )
+            action_prompts "$context" "$name" "${initial_actions[@]}"
             echoerr "second_menu() success"
             # set name and actions as data for next execution of script
-            rofi_data_create_header "$name" "$initial_actions"
+            rofi_data_create_header "$context" "$name" "${initial_actions[*]}"
             return 0
         fi
     done
@@ -138,15 +186,17 @@ second_menu() {
 
 next_menus() {
     local selection="$1"
-    local name="$2"
-    local actions="$3"
-    echoerr "next_menus() Selection: $selection"
+    local context="$2"
+    local name="$3"
+    local actions="$4"
     local action
+    echoerr "next_menus() Selection: $selection"
     for action in $actions; do
         if [ "$selection" = "$(write_message "${ACTIONS[$action]}")" ]; then
             case "$action" in
             "start" | "suspend" | "shutdown" | "resume")
-                virsh --connect "$SESSION_URI" "$action" "$name" | notify "Virtual Machine: $name"
+                virsh --connect "qemu:///$context" "$action" "$name" |
+                    notify "Virtual Machine: $name"
                 echo "$action"
                 ;;
             "looking_glass")
@@ -170,19 +220,21 @@ main() {
     populate_entries
     if [ $# -eq 1 ]; then
         if ! second_menu "$1"; then
-            local name actions chosen next_actions
+            local context name actions chosen next_actions
             echoerr "main() ROFI_DATA: $ROFI_DATA"
-            IFS='|' read -r name actions <<<"$ROFI_DATA"
-            chosen=$(next_menus "$1" "$name" "$actions")
+            IFS="$ROFI_DATA_SEPARATOR" read -r context name actions <<<"$ROFI_DATA"
+            chosen=$(next_menus "$1" "$context" "$name" "$actions")
             if [ $? -ne 0 ]; then
                 invalid_selection "$1"
                 exit 1
             fi
-            next_actions="$(actions_from_chosen_action "$chosen")"
+            read -ra next_actions < <(
+                actions_from_chosen_action "$context" "$name" "$chosen"
+            )
             echoerr "main() chosen action: $chosen"
-            echoerr "main() next actions: $next_actions"
-            action_prompts "$name" $next_actions
-            rofi_data_create_header "$name" "$next_actions"
+            echoerr "main() next actions: ${next_actions[*]}"
+            action_prompts "$context" "$name" "${next_actions[@]}"
+            rofi_data_create_header "$context" "$name" "${next_actions[*]}"
         fi
     elif [ $# -eq 0 ]; then
         first_menu
