@@ -44,9 +44,15 @@ declare -rA ACTIONS=(
     [shutdown]="Shut down"
     [resume]="Resume"
     [looking_glass]="Launch Looking Glass"
+    [acpi_s3]="Suspend to memory (S3)"
+    [acpi_s4]="Suspend to disk (S4)"
+)
+declare -rA ACTIONAL_ADDITIONAL_ARGS=(
+    [acpi_s3]="--target mem"
+    [acpi_s4]="--target disk"
 )
 readonly ACTIONS_AFTER_START=(suspend shutdown)
-readonly ACTIONS_FALLBACK=(start suspend shutdown resume)
+readonly ACTIONS_FALLBACK=(start suspend shutdown resume acpi_s3 acpi_s4)
 
 declare -A messages
 declare -A virtual_machines
@@ -60,9 +66,22 @@ populate_entries() {
     done < <(
         for uri in "${SESSION_URIS[@]}"; do
             echo -n "${uri##*/}"
-            virsh --connect "$uri" list --all | tail -n +3 | sed '/^[[:space:]]*$/d'
+            virsh --connect "$uri" list --all |
+                tail -n +3 |
+                sed '/^[[:space:]]*$/d'
         done
     )
+}
+
+supports_acpi_suspend() {
+    local -r context="$1"
+    local -r name="$2"
+    local -r additional_args="${ACTIONAL_ADDITIONAL_ARGS[$3]}"
+    local suspend_to supports
+    suspend_to=$(awk '{ print $2 }' <<<"$additional_args")
+    supports=$(virsh --connect=qemu:///"$context" dumpxml "$name" |
+        xmllint --xpath "string(/domain/pm/suspend-to-$suspend_to/@enabled)" -)
+    [ "$supports" = "yes" ]
 }
 
 is_using_looking_glass() {
@@ -80,11 +99,20 @@ actions_after_start() {
     local context="$1"
     local name="$2"
     local initial_state="$3"
+    local actions=()
     if is_using_looking_glass "$context" "$name"; then
-        echo "looking_glass" "${ACTIONS_AFTER_START[@]}"
-    elif [ "$initial_state" = "running" ]; then
-        echo "${ACTIONS_AFTER_START[@]}"
+        actions+=(looking_glass)
     fi
+    if [ "$initial_state" = "running" ]; then
+        actions+=("${ACTIONS_AFTER_START[@]}")
+        if supports_acpi_suspend "$context" "$name" acpi_s3; then
+            actions+=(acpi_s3)
+        fi
+        if supports_acpi_suspend "$context" "$name" acpi_s4; then
+            actions+=(acpi_s4)
+        fi
+    fi
+    echo "${actions[@]}"
 }
 
 actions_fallback() {
@@ -123,7 +151,7 @@ actions_from_chosen_action() {
     local action="$3"
     local initial_state="$4"
     case "$action" in
-    "suspend" | "shutdown" | "looking_glass")
+    "suspend" | "shutdown" | "looking_glass" | "acpi_s3" | "acpi_s4")
         echoerr "actions_from_chosen_action() no more future actions"
         ;;
     "resume" | "start")
@@ -203,9 +231,18 @@ next_menus() {
         if [ "$selection" = "$(write_message "${ACTIONS[$action]}")" ]; then
             case "$action" in
             "start" | "suspend" | "shutdown" | "resume")
-                virsh --connect "qemu:///$context" "$action" "$name" |
+                virsh --connect "qemu:///$context" "$action" "$name" 2>&1 |
                     notify "Virtual Machine: $name"
                 echo "$action"
+                ;;
+            "acpi_s3" | "acpi_s4")
+                local additional_args
+                read -ra additional_args \
+                    <<<"${ACTIONAL_ADDITIONAL_ARGS[$action]}"
+                virsh --connect "qemu:///$context" dompmsuspend "$name" \
+                    "${additional_args[@]}" 2>&1 |
+                    notify "Virtual Machine: $name"
+                echo dompmsuspend "${additional_args[@]}"
                 ;;
             "looking_glass")
                 launch_looking_glass "$name" | notify "Virtual Machine: $name"
