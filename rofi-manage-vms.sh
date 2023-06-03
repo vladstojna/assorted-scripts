@@ -7,8 +7,11 @@ echoerr() {
 }
 
 write_message() {
-    local text="<span font_size=\"medium\">$1</span>"
-    echo -n "$text"
+    if [ -z "${FONT_DESC:-}" ]; then
+        echo -n "$1"
+    else
+        echo -n "<span font_desc=\"$FONT_DESC\">$1</span>"
+    fi
 }
 
 notify() {
@@ -26,9 +29,7 @@ launch_looking_glass() {
 }
 
 format_entry() {
-    local separator
-    separator="$(head -c 8 </dev/zero | tr '\0' ' ')"
-    printf "%s$separator" "context: $1" "id: $2" "name: $3" "state: $4"
+    printf "%-24s%-12s%-30s%s" "context: $1" "id: $2" "name: $3" "state: $4"
 }
 
 readonly ROFI_DATA_SEPARATOR="|"
@@ -224,6 +225,7 @@ next_menus() {
 main() {
     echo -e "\0no-custom\x1ftrue"
     echo -e "\0markup-rows\x1ftrue"
+    echo -e "\0keep-selection\x1ffalse"
     populate_entries
     if [ $# -eq 1 ]; then
         if ! second_menu "$1"; then
