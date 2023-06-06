@@ -58,17 +58,21 @@ declare -A messages
 declare -A virtual_machines
 
 populate_entries() {
-    local id name state
+    local id name state context
     while read -r context id name state; do
         local key="${context}${KEY_SEPARATOR}${name}"
         messages[$key]=$(write_message "$(format_entry "$context" "$id" "$name" "$state")")
         virtual_machines+=([$key]="$state")
     done < <(
         for uri in "${SESSION_URIS[@]}"; do
-            echo -n "${uri##*/}"
-            virsh --connect "$uri" list --all |
-                tail -n +3 |
-                sed '/^[[:space:]]*$/d'
+            local line
+            while read -r line; do
+                echo "${uri##*/}" "$line"
+            done < <(
+                virsh --connect "$uri" list --all |
+                    tail -n +3 |
+                    sed '/^[[:space:]]*$/d'
+            )
         done
     )
 }
