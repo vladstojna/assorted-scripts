@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -eu
+
 pacmd unload-module module-jack-sink
 pacmd unload-module module-jack-source
 
